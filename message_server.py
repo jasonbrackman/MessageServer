@@ -16,8 +16,6 @@ import collections
 
 cMessageServer = os.path.abspath(r"message_server.py")
 
-is_master_available = True
-
 # Constants being used across classes.
 # Should they be globals? Another class? Referenced by the others?
 SEND_KEY = "?*knock*knock*?"
@@ -27,7 +25,7 @@ quiet_mode = False
 
 
 class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
-    # collections.deque() is supposed to be threadsafe.
+    # collections.deque() is supposed to be thread safe.
     collector = collections.deque()
 
     @staticmethod
@@ -38,16 +36,18 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
 
     # Keep collecting messages -- and when a SEND_KEY is received, send all the stored data.
     def handle(self):
-        data = str(self.request.recv(BUFFERSIZE), 'ascii')
-        timestamp = self.get_timestamp()
-        if len(data) > 0:
-            if SEND_KEY in data:
-                if len(self.collector) > 0:
-                    newline = "{}: {}\r\n".format(timestamp, self.collector.pop())
-                    self.request.sendall(bytes(newline, 'ascii'))
+        while True:
+            data = str(self.request.recv(BUFFERSIZE), 'ascii')
 
-            else:
-                self.collector.extend(data.splitlines())
+            if data:
+                if SEND_KEY in data:
+                    while len(self.collector) > 0:
+                        self.request.sendall(bytes(self.collector.popleft(), 'ascii'))
+
+                else:
+                    timestamp = self.get_timestamp()
+                    final_list = ["{}: {}\r\n".format(timestamp, line) for line in data.splitlines()]
+                    self.collector.extend(final_list)
 
 
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -64,9 +64,9 @@ class GUI(tkinter.Tk):
         # setup the title of the app
         self.wm_title("Message Server")
         self.add_file_menu()
-        #self.setup_app_icon()
+        # self.setup_app_icon()
 
-        #Main UI Setup
+        # Main UI Setup
 
         # setup the textbox
         self.text = tkinter.Text(self, width=85, height=16, borderwidth=1, wrap='none')
@@ -113,8 +113,6 @@ class GUI(tkinter.Tk):
 
     # setup loop to be called once mainloop starts.
     def callback_get_messages(self):
-        #self.text.tag_add("error", "1.21", "1.28")
-
         messages = self.requestMessages(self.server)
         if messages is not None:
             lines = messages.splitlines()
@@ -127,7 +125,7 @@ class GUI(tkinter.Tk):
                     self.text.tag_add("newline", "1.21", "1.251")
                     self.text.tag_config("newline", background="gray", foreground="blue")
 
-        self.after(1, self.callback_get_messages)
+        self.after(2, self.callback_get_messages)
         self.update_idletasks()
 
     def callback_set_clipboard(self):
@@ -178,7 +176,7 @@ class GUI(tkinter.Tk):
             print(e)
 
         except Exception as e:
-            msg = "{}\n".format(e)
+            msg = ">>>{}\n".format(e)
             print(msg)
 
         return data
@@ -189,13 +187,13 @@ class GUI(tkinter.Tk):
     def add_file_menu(self):
         self.option_add('*tearOff', False)
 
-        self.menubar = tkinter.Menu(self)
-        self.filemenu = tkinter.Menu(self.menubar)
-        self.filemenu.add_command(label="Clear All", command=self.clear_text_field)
+        menubar = tkinter.Menu(self)
+        filemenu = tkinter.Menu(menubar)
+        filemenu.add_command(label="Clear All", command=self.clear_text_field)
 
-        self.menubar.add_cascade(label="File", menu=self.filemenu)
+        menubar.add_cascade(label="File", menu=filemenu)
 
-        self.config(menu=self.menubar)
+        self.config(menu=menubar)
 
     # Select all the text in textbox
     def select_all(self, event):
@@ -227,6 +225,7 @@ def start_server(HOST, PORT):
         print("Server ({0}:{1}) loop running in thread: {2}".format(HOST, PORT, server_thread.name))
 
         return server
+
     except OSError as e:
         print(e)
 
@@ -253,7 +252,7 @@ def send_message(message):
         try:
             sock.connect((ip, port))
             sock.sendall(bytes(message, 'ascii'))
-            response = str(sock.recv(BUFFERSIZE), 'ascii')
+            # response = str(sock.recv(BUFFERSIZE), 'ascii')
 
         except Exception as e:
             print("Error on {}:{} -> {}".format(ip, port, e))
@@ -274,6 +273,6 @@ if __name__ == "__main__":
     sys.argv =["", "hello"]
     if len(sys.argv) > 1:
         HOST, PORT = "localhost", 9001
-        start_gui("{0}\n{1}\n".format("_____________________________", "Message server started..."),
+        start_gui("{0}\n{1}\n".format("Message server started...", "_____________________________"),
                   HOST,
                   PORT)
